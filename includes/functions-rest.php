@@ -101,6 +101,55 @@ function registerRestRoutes(): void
 
     register_rest_route(
         'brocode/v1',
+        '/seo-archive-option',
+        [
+            'methods'             => 'POST',
+            'callback'            => __NAMESPACE__ . '\\updateSeoArchiveOption',
+            'permission_callback' => static fn() => current_user_can('manage_options'),
+            'args'                => [
+                'key'   => [
+                    'required'          => true,
+                    'type'              => 'string',
+                    'enum'              => [
+                        'metadesc-ptarchive-brocode_repo',
+                        'title-ptarchive-brocode_repo',
+                        'metadesc-ptarchive-post',
+                        'title-ptarchive-post',
+                    ],
+                    'sanitize_callback' => 'sanitize_key',
+                ],
+                'value' => [
+                    'required'          => true,
+                    'type'              => 'string',
+                    'maxLength'         => 320,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'brocode/v1',
+        '/post-meta/(?P<id>\d+)/(?P<key>[a-z_]+)',
+        [
+            'methods'             => 'DELETE',
+            'callback'            => __NAMESPACE__ . '\\deletePostMeta',
+            'permission_callback' => static function (WP_REST_Request $request): bool {
+                return current_user_can('edit_post', (int) $request['id']);
+            },
+            'args'                => [
+                'id'  => ['required' => true, 'type' => 'integer'],
+                'key' => [
+                    'required' => true,
+                    'type'     => 'string',
+                    'enum'     => ['featured'],
+                ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'brocode/v1',
         '/seo-meta/(?P<id>\d+)',
         [
             'methods'             => 'POST',
@@ -260,4 +309,34 @@ function updateSeoMeta(WP_REST_Request $request): WP_REST_Response|\WP_Error
     }
 
     return new WP_REST_Response(['id' => $postId, 'updated' => $updated], 200);
+}
+
+function deletePostMeta(WP_REST_Request $request): WP_REST_Response|\WP_Error
+{
+    $postId = (int) $request['id'];
+    $key    = sanitize_key((string) $request['key']);
+
+    if (!get_post($postId)) {
+        return new \WP_Error('brocode_post_not_found', 'Post not found.', ['status' => 404]);
+    }
+
+    delete_post_meta($postId, $key);
+
+    return new WP_REST_Response(['id' => $postId, 'key' => $key, 'deleted' => true], 200);
+}
+
+function updateSeoArchiveOption(WP_REST_Request $request): WP_REST_Response|\WP_Error
+{
+    if (!defined('WPSEO_VERSION')) {
+        return new \WP_Error('brocode_yoast_not_active', 'Yoast SEO is not active.', ['status' => 503]);
+    }
+
+    $key   = (string) $request->get_param('key');
+    $value = mb_substr((string) $request->get_param('value'), 0, 320);
+
+    $titles         = (array) get_option('wpseo_titles', []);
+    $titles[$key]   = $value;
+    update_option('wpseo_titles', $titles);
+
+    return new WP_REST_Response(['key' => $key, 'value' => $value], 200);
 }
