@@ -115,6 +115,8 @@ function registerRestRoutes(): void
                         'title-ptarchive-brocode_repo',
                         'metadesc-ptarchive-post',
                         'title-ptarchive-post',
+                        'metadesc-author-wpseo',
+                        'title-author-wpseo',
                     ],
                     'sanitize_callback' => 'sanitize_key',
                 ],
@@ -124,6 +126,30 @@ function registerRestRoutes(): void
                     'maxLength'         => 320,
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'brocode/v1',
+        '/seo-term-meta',
+        [
+            'methods'             => 'POST',
+            'callback'            => __NAMESPACE__ . '\\updateSeoTermMeta',
+            'permission_callback' => static fn() => current_user_can('manage_options'),
+            'args'                => [
+                'taxonomy' => [
+                    'required' => true,
+                    'type'     => 'string',
+                    'enum'     => ['category', 'post_tag', 'brocode_topic'],
+                ],
+                'term_id'  => [
+                    'required' => true,
+                    'type'     => 'integer',
+                    'minimum'  => 1,
+                ],
+                'metadesc' => ['required' => false, 'type' => 'string', 'maxLength' => 156],
+                'title'    => ['required' => false, 'type' => 'string', 'maxLength' => 191],
             ],
         ]
     );
@@ -309,6 +335,49 @@ function updateSeoMeta(WP_REST_Request $request): WP_REST_Response|\WP_Error
     }
 
     return new WP_REST_Response(['id' => $postId, 'updated' => $updated], 200);
+}
+
+function updateSeoTermMeta(WP_REST_Request $request): WP_REST_Response|\WP_Error
+{
+    if (!defined('WPSEO_VERSION') || !class_exists('WPSEO_Taxonomy_Meta')) {
+        return new \WP_Error('brocode_yoast_not_active', 'Yoast SEO is not active.', ['status' => 503]);
+    }
+
+    $taxonomy = (string) $request->get_param('taxonomy');
+    $termId   = (int) $request->get_param('term_id');
+
+    if (!get_term($termId, $taxonomy)) {
+        return new \WP_Error('brocode_term_not_found', "Term {$termId} not found in {$taxonomy}.", ['status' => 404]);
+    }
+
+    $fieldMap = [
+        'metadesc' => ['yoast_key' => 'wpseo_desc', 'max' => 156],
+        'title'    => ['yoast_key' => 'wpseo_title', 'max' => 191],
+    ];
+
+    $updated = [];
+    foreach ($fieldMap as $field => $config) {
+        if (!$request->has_param($field)) {
+            continue;
+        }
+        $value = mb_substr(sanitize_text_field((string) $request->get_param($field)), 0, $config['max']);
+        // Use Yoast's own API so its sanitize_option filter and option_filter hooks run correctly.
+        \WPSEO_Taxonomy_Meta::set_value($termId, $taxonomy, $config['yoast_key'], $value);
+        $updated[$field] = $value;
+    }
+
+    if ($updated === []) {
+        return new \WP_Error('brocode_missing_fields', 'At least one SEO field (metadesc, title) is required.', ['status' => 400]);
+    }
+
+    // Rebuild the Yoast indexable so the new meta description is reflected in page output.
+    // Yoast uses a cached indexable table; without this, the <meta description> won't appear.
+    $termObj = get_term($termId, $taxonomy);
+    if ($termObj && !is_wp_error($termObj)) {
+        do_action('edited_term', $termId, $termObj->term_taxonomy_id, $taxonomy);
+    }
+
+    return new WP_REST_Response(['taxonomy' => $taxonomy, 'term_id' => $termId, 'updated' => $updated], 200);
 }
 
 function deletePostMeta(WP_REST_Request $request): WP_REST_Response|\WP_Error
