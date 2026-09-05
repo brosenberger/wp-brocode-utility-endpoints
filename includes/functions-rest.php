@@ -79,6 +79,16 @@ function registerRestRoutes(): void
 
     register_rest_route(
         'brocode/v1',
+        '/indexnow-status',
+        [
+            'methods'             => 'GET',
+            'callback'            => __NAMESPACE__ . '\\indexNowStatus',
+            'permission_callback' => static fn() => current_user_can('manage_options'),
+        ]
+    );
+
+    register_rest_route(
+        'brocode/v1',
         '/manage-plugin',
         [
             'methods'             => 'POST',
@@ -207,6 +217,32 @@ function scanInternalLinks(WP_REST_Request $request): WP_REST_Response
     $result = doScanLinks((string) $request->get_param('pattern'));
     $status  = isset($result['error']) ? 400 : 200;
     return new WP_REST_Response($result, $status);
+}
+
+/**
+ * Reads back what `brocode-indexnow` recorded for its last submission.
+ *
+ * The mu-plugin parks the outcome in an option precisely because production has
+ * no shell - and that left the record unreadable on the one environment whose
+ * submissions matter, which is the same shape of mistake as minting the key into
+ * the database. This is the missing read path: `code` 200 or 202 means the
+ * engines accepted the batch, `error` means the POST never completed, and a null
+ * `last` means no submission has ever been recorded on this site.
+ */
+function indexNowStatus(): WP_REST_Response|\WP_Error
+{
+    if (!defined('Brocode\\IndexNow\\STATUS_OPTION')) {
+        return new \WP_Error(
+            'brocode_indexnow_missing',
+            'brocode-indexnow is not loaded on this site.',
+            ['status' => 404]
+        );
+    }
+
+    return new WP_REST_Response(
+        ['last' => get_option(constant('Brocode\\IndexNow\\STATUS_OPTION'), null)],
+        200
+    );
 }
 
 /**

@@ -19,6 +19,7 @@ Brocode Utility Endpoints exposes a small set of admin-level REST API endpoints 
 * `POST /brocode/v1/flush-rewrites` — flush WordPress rewrite rules
 * `POST /brocode/v1/clear-cache` — clear the active page cache (Cache Enabler, W3 Total Cache, WP Super Cache)
 * `GET /brocode/v1/scan-links?pattern=…` — find all posts whose content contains a URL pattern
+* `GET /brocode/v1/indexnow-status` — read the outcome of the last IndexNow submission
 * `POST /brocode/v1/manage-plugin` — activate, deactivate, or delete a plugin
 * `POST /brocode/v1/seo-meta/{id}` — write Yoast SEO focus keyword, title, and meta description
 
