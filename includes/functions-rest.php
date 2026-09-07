@@ -89,6 +89,30 @@ function registerRestRoutes(): void
 
     register_rest_route(
         'brocode/v1',
+        '/llms-hits',
+        [
+            'methods'             => 'GET',
+            'callback'            => __NAMESPACE__ . '\\llmsHits',
+            'permission_callback' => static fn() => current_user_can('manage_options'),
+            'args'                => [
+                'days'  => [
+                    'type'    => 'integer',
+                    'default' => 90,
+                    'minimum' => 1,
+                    'maximum' => 3650,
+                ],
+                'limit' => [
+                    'type'    => 'integer',
+                    'default' => 50,
+                    'minimum' => 0,
+                    'maximum' => 500,
+                ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'brocode/v1',
         '/manage-plugin',
         [
             'methods'             => 'POST',
@@ -241,6 +265,93 @@ function indexNowStatus(): WP_REST_Response|\WP_Error
 
     return new WP_REST_Response(
         ['last' => get_option(constant('Brocode\\IndexNow\\STATUS_OPTION'), null)],
+        200
+    );
+}
+
+/**
+ * Reads back the llms.txt hit log the brocode-llms-hits mu-plugin collects.
+ *
+ * Same shape and reason as indexNowStatus() above: production has no shell and
+ * no access log of its own, so the only way to see this data is to have the
+ * application hand it over through the channel the MCP already authenticates
+ * on. The summary is the answer to "does anything read llms.txt"; the sample
+ * rows are there so a surprising summary can be checked rather than believed.
+ */
+function llmsHits(WP_REST_Request $request): WP_REST_Response|\WP_Error
+{
+    if (!defined('Brocode\\LlmsHits\\SCHEMA_VERSION')) {
+        return new \WP_Error(
+            'brocode_llms_hits_missing',
+            'brocode-llms-hits is not loaded on this site.',
+            ['status' => 404]
+        );
+    }
+
+    global $wpdb;
+
+    $table = \Brocode\LlmsHits\tableName();
+
+    // esc_like matters here: the table name contains underscores, and an
+    // unescaped _ is a single-character LIKE wildcard (B.19).
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) !== $table) {
+        return new \WP_Error(
+            'brocode_llms_hits_no_table',
+            'brocode-llms-hits is loaded but its table does not exist yet; it is created on the first init after install.',
+            ['status' => 503]
+        );
+    }
+
+    $days  = (int) $request->get_param('days');
+    $limit = (int) $request->get_param('limit');
+    $since = gmdate('Y-m-d H:i:s', time() - ($days * DAY_IN_SECONDS));
+
+    $byAgent = $wpdb->get_results(
+        $wpdb->prepare(
+            'SELECT agent, kind, COUNT(*) AS hits, MIN(hit_at) AS first_seen, MAX(hit_at) AS last_seen
+             FROM %i WHERE hit_at >= %s GROUP BY agent, kind ORDER BY hits DESC',
+            $table,
+            $since
+        ),
+        ARRAY_A
+    );
+
+    $totals = $wpdb->get_row(
+        $wpdb->prepare(
+            'SELECT COUNT(*) AS hits, COUNT(DISTINCT agent) AS agents, MIN(hit_at) AS first_seen, MAX(hit_at) AS last_seen
+             FROM %i WHERE hit_at >= %s',
+            $table,
+            $since
+        ),
+        ARRAY_A
+    );
+
+    $recent = [];
+    if ($limit > 0) {
+        $recent = $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT hit_at, kind, path, agent, status, user_agent
+                 FROM %i WHERE hit_at >= %s ORDER BY hit_at DESC LIMIT %d',
+                $table,
+                $since,
+                $limit
+            ),
+            ARRAY_A
+        );
+    }
+
+    // collecting_since is the whole log, not the window, so a caller can tell
+    // "nothing asked in 90 days" apart from "this has only been running a week"
+    // - which is the difference between a finding and a premature conclusion.
+    return new WP_REST_Response(
+        [
+            'window_days'     => $days,
+            'since'           => $since,
+            'collecting_since' => $wpdb->get_var($wpdb->prepare('SELECT MIN(hit_at) FROM %i', $table)),
+            'totals'          => $totals,
+            'by_agent'        => $byAgent,
+            'recent'          => $recent,
+        ],
         200
     );
 }

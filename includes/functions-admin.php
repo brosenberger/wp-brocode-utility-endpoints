@@ -252,6 +252,7 @@ function renderAdminPage(): void
                     ['POST', '/brocode/v1/flush-rewrites', __('Flush rewrite rules', 'brocode-utility-endpoints'), 'manage_options'],
                     ['POST', '/brocode/v1/clear-cache', __('Clear page cache', 'brocode-utility-endpoints'), 'manage_options'],
                     ['GET',  '/brocode/v1/scan-links?pattern=…', __('Scan post content for URL pattern', 'brocode-utility-endpoints'), 'manage_options'],
+                    ['GET',  '/brocode/v1/llms-hits?days=…&limit=…', __('Read the llms.txt / .md endpoint hit log', 'brocode-utility-endpoints'), 'manage_options'],
                     ['POST', '/brocode/v1/manage-plugin', __('Activate / deactivate / delete a plugin', 'brocode-utility-endpoints'), 'activate_plugins'],
                     ['POST', '/brocode/v1/seo-meta/{id}', __('Set Yoast SEO focus keyword, title, meta description', 'brocode-utility-endpoints'), 'edit_post'],
                 ];
