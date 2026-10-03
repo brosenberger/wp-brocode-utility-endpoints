@@ -28,8 +28,8 @@
 /**
  * Plugin Name: Brocode Utility Endpoints
  * Plugin URI:  https://github.com/brosenberger/wp-brocode-utility-endpoints
- * Description: Admin-authenticated REST endpoints and WP Abilities for site management — flush rewrites, clear cache, scan links, manage plugins, set Yoast SEO meta. Includes an admin UI and WP-CLI commands.
- * Version:     1.2.0
+ * Description: Admin-authenticated REST endpoints and WP Abilities for site management — flush rewrites, clear cache, scan links, manage plugins, set Yoast SEO meta, export/import content for a two-way git sync. Includes an admin UI and WP-CLI commands.
+ * Version:     1.3.0
  * Requires at least: 6.5
  * Tested up to: 6.8
  * Requires PHP: 8.1
@@ -55,6 +55,8 @@ define('BUE_SCAN_TRANSIENT_PREFIX', 'brocode_utility_scan_');
 
 require_once __DIR__ . '/includes/functions-core.php';
 require_once __DIR__ . '/includes/functions-rest.php';
+require_once __DIR__ . '/includes/functions-content-sync.php';
+require_once __DIR__ . '/includes/functions-content-sync-import.php';
 require_once __DIR__ . '/includes/functions-abilities.php';
 require_once __DIR__ . '/includes/functions-admin.php';
 require_once __DIR__ . '/includes/functions-cli.php';
@@ -62,6 +64,7 @@ require_once __DIR__ . '/includes/functions-cli.php';
 add_action('init', __NAMESPACE__ . '\\loadTextdomain');
 add_action('init', __NAMESPACE__ . '\\registerCliCommands');
 add_action('rest_api_init', __NAMESPACE__ . '\\registerRestRoutes');
+add_action('rest_api_init', __NAMESPACE__ . '\\registerContentSyncRoutes');
 add_action('wp_abilities_api_init', __NAMESPACE__ . '\\registerAbilities');
 add_action('admin_menu', __NAMESPACE__ . '\\registerAdminPage');
 add_action('admin_post_' . BUE_ADMIN_HOOK . '_flush', __NAMESPACE__ . '\\handleAdminFlush');

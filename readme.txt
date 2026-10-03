@@ -4,7 +4,7 @@ Tags: rest-api, utilities, cache, rewrite, wp-cli
 Requires at least: 6.5
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
@@ -69,6 +69,10 @@ Yes. All five endpoints are registered as WP Abilities on the `wp_abilities_api_
 
 == Changelog ==
 
+= 1.3.0 =
+* Added content sync endpoints for a two-way git ↔ WordPress workflow: `GET content-export` (posts in an environment-neutral form — `{{home}}` URLs, attachment IDs with a path map, post references as slugs), `POST content-import` (one post by type + slug; translates media IDs to the target site, refuses with 409 when the post changed since the last sync), `POST media-ensure` (registers or uploads media at its original uploads path).
+* Meta fields that hold post IDs are declared per site through the `brocode_content_sync_post_refs` filter.
+
 = 1.2.0 =
 * Refactored into `includes/` — core logic, REST callbacks, Abilities, admin UI, and WP-CLI are now in separate files for maintainability.
 * Added `readme.txt` (WordPress.org format).
@@ -87,6 +91,9 @@ Yes. All five endpoints are registered as WP Abilities on the `wp_abilities_api_
 * Initial release: five REST endpoints under `brocode/v1` with dual-registration as WP Abilities.
 
 == Upgrade Notice ==
+
+= 1.3.0 =
+Adds three REST routes (content-export, content-import, media-ensure); no database changes. They require Application Passwords (Wordfence's "disable application passwords" option must be off).
 
 = 1.2.0 =
 Code reorganization only — no functional changes, no database changes, no migration needed.
