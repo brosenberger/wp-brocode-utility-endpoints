@@ -91,13 +91,12 @@ function contentExport(WP_REST_Request $request): WP_REST_Response|\WP_Error
         'order'            => 'ASC',
         'suppress_filters' => true,
     ];
-    if ((string) $request['slug'] !== '') {
-        $query['name'] = (string) $request['slug'];
-    }
+    $slug  = (string) $request['slug'];
+    $posts = $slug !== '' ? array_filter([syncFindPost($type, $slug)]) : get_posts($query);
     $summary = (bool) $request['summary'];
     $items   = array_map(
         static fn(WP_Post $post): array => $summary ? syncSummary($post) : syncExportPost($post),
-        get_posts($query)
+        array_values($posts)
     );
 
     return new WP_REST_Response([
@@ -112,7 +111,20 @@ function contentExport(WP_REST_Request $request): WP_REST_Response|\WP_Error
  */
 function syncSummary(WP_Post $post): array
 {
-    return ['id' => $post->ID, 'slug' => $post->post_name, 'status' => $post->post_status, 'modified_gmt' => $post->post_modified_gmt];
+    return ['id' => $post->ID, 'slug' => syncSlug($post), 'status' => $post->post_status, 'modified_gmt' => $post->post_modified_gmt];
+}
+
+/**
+ * The post's slug, or for a draft that WordPress has not given one yet the slug it would get
+ * from its title — without it, several such drafts would share an empty file name.
+ */
+function syncSlug(WP_Post $post): string
+{
+    if ($post->post_name !== '') {
+        return $post->post_name;
+    }
+
+    return sanitize_title($post->post_title) ?: 'post-' . $post->ID;
 }
 
 /**

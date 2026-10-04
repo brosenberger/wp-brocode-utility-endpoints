@@ -78,15 +78,19 @@ function contentImport(WP_REST_Request $request): WP_REST_Response|\WP_Error
 
 function syncFindPost(string $type, string $slug): ?WP_Post
 {
-    $posts = get_posts([
-        'post_type'        => $type,
-        'name'             => $slug,
-        'post_status'      => ['publish', 'draft', 'pending', 'private', 'future'],
-        'numberposts'      => 1,
-        'suppress_filters' => true,
-    ]);
+    $statuses = ['publish', 'draft', 'pending', 'private', 'future'];
+    $posts    = get_posts(['post_type' => $type, 'name' => $slug, 'post_status' => $statuses, 'numberposts' => 1, 'suppress_filters' => true]);
+    if ($posts !== []) {
+        return $posts[0];
+    }
+    // A draft without a stored slug is known by the one syncSlug() derives from its title.
+    foreach (get_posts(['post_type' => $type, 'post_status' => ['draft', 'pending'], 'numberposts' => -1, 'suppress_filters' => true]) as $draft) {
+        if ($draft->post_name === '' && syncSlug($draft) === $slug) {
+            return $draft;
+        }
+    }
 
-    return $posts[0] ?? null;
+    return null;
 }
 
 /**
