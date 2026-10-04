@@ -53,7 +53,7 @@ function contentImport(WP_REST_Request $request): WP_REST_Response|\WP_Error
     if (!post_type_exists($type) || $slug === '') {
         return new \WP_Error('brocode_bad_item', 'type and slug are required.', ['status' => 400]);
     }
-    $existing = syncFindPost($type, $slug);
+    $existing = syncFindPost($type, $slug) ?? syncFindMediaByPath($type, $item);
     $conflict = syncConflict($existing, $item);
     if ($conflict !== null) {
         return $conflict;
@@ -61,6 +61,11 @@ function contentImport(WP_REST_Request $request): WP_REST_Response|\WP_Error
     $idMap = syncResolveMedia((array) ($item['media'] ?? []));
     if ($idMap instanceof \WP_Error) {
         return $idMap;
+    }
+    // A new media file exists now (media-ensure registered it under its path): update that one.
+    $existing ??= syncFindMediaByPath($type, $item);
+    if ($type === 'attachment' && !$existing instanceof WP_Post) {
+        return new \WP_Error('brocode_sync_media_missing', 'Media file missing here; run media-ensure first.', ['status' => 422, 'paths' => array_values((array) ($item['media'] ?? []))]);
     }
     $postId = syncWritePost($existing, $type, $slug, $item, $idMap);
     if ($postId instanceof \WP_Error) {
@@ -76,9 +81,25 @@ function contentImport(WP_REST_Request $request): WP_REST_Response|\WP_Error
     return new WP_REST_Response(syncExportPost(get_post($postId)), $existing ? 200 : 201);
 }
 
+/**
+ * A media file whose slug differs between sites is still the same file at the same path.
+ *
+ * @param array<string, mixed> $item
+ */
+function syncFindMediaByPath(string $type, array $item): ?WP_Post
+{
+    $paths = array_values((array) ($item['media'] ?? []));
+    if ($type !== 'attachment' || count($paths) !== 1) {
+        return null;
+    }
+    $id = syncAttachmentByPath((string) $paths[0]);
+
+    return $id > 0 ? get_post($id) : null;
+}
+
 function syncFindPost(string $type, string $slug): ?WP_Post
 {
-    $statuses = ['publish', 'draft', 'pending', 'private', 'future'];
+    $statuses = syncStatuses($type);
     $posts    = get_posts(['post_type' => $type, 'name' => $slug, 'post_status' => $statuses, 'numberposts' => 1, 'suppress_filters' => true]);
     if ($posts !== []) {
         return $posts[0];
@@ -160,13 +181,15 @@ function syncWritePost(?WP_Post $existing, string $type, string $slug, array $it
         'ID'           => $existing?->ID ?? 0,
         'post_type'    => $type,
         'post_name'    => $slug,
-        'post_status'  => sanitize_key((string) ($item['status'] ?? 'draft')),
+        'post_status'  => $type === 'attachment' ? 'inherit' : sanitize_key((string) ($item['status'] ?? 'draft')),
         'post_title'   => (string) ($item['title'] ?? ''),
         'post_excerpt' => (string) ($item['excerpt'] ?? ''),
         'post_content' => $content,
-        'post_parent'  => $parent instanceof WP_Post ? $parent->ID : 0,
         'menu_order'   => (int) ($item['menu_order'] ?? 0),
     ];
+    if ($type !== 'attachment') {
+        $postarr['post_parent'] = $parent instanceof WP_Post ? $parent->ID : 0;
+    }
     // A template the active theme lacks (e.g. a classic theme's page-templates/… file under a
     // block theme) makes wp_insert_post fail AFTER saving the post. Keep the stored one instead.
     $template = (string) ($item['template'] ?? '');
@@ -177,8 +200,10 @@ function syncWritePost(?WP_Post $existing, string $type, string $slug, array $it
         $postarr['post_date'] = (string) $item['date'];
     }
 
-    // wp_insert_post unslashes; content with backslashes (JSON in block attributes) must be slashed.
-    return wp_insert_post(wp_slash($postarr), true);
+    // Both unslash; content with backslashes (JSON in block attributes) must be slashed.
+    // Updates go through wp_update_post, which keeps every field not sent (author, comment
+    // status, a media file's MIME type) — wp_insert_post with an ID resets them to defaults.
+    return $existing instanceof WP_Post ? wp_update_post(wp_slash($postarr), true) : wp_insert_post(wp_slash($postarr), true);
 }
 
 /**
@@ -198,7 +223,12 @@ function syncWriteMeta(int $postId, string $type, array $meta): void
         }
         $value = syncMapStrings($value, __NAMESPACE__ . '\\syncLocalUrls');
         if (!empty($registered[$key]['single'])) {
-            update_post_meta($postId, $key, wp_slash($value));
+            // Empty means "not set": some flags are checked by the key's existence alone.
+            if ($value === '' || $value === null) {
+                delete_post_meta($postId, $key);
+            } else {
+                update_post_meta($postId, $key, wp_slash($value));
+            }
             continue;
         }
         delete_post_meta($postId, $key);

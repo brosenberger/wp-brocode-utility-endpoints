@@ -65,6 +65,7 @@ add_action('init', __NAMESPACE__ . '\\loadTextdomain');
 add_action('init', __NAMESPACE__ . '\\registerCliCommands');
 add_action('rest_api_init', __NAMESPACE__ . '\\registerRestRoutes');
 add_action('rest_api_init', __NAMESPACE__ . '\\registerContentSyncRoutes');
+add_action('init', __NAMESPACE__ . '\\registerSyncAttachmentMeta');
 add_action('wp_abilities_api_init', __NAMESPACE__ . '\\registerAbilities');
 add_action('admin_menu', __NAMESPACE__ . '\\registerAdminPage');
 add_action('admin_post_' . BUE_ADMIN_HOOK . '_flush', __NAMESPACE__ . '\\handleAdminFlush');

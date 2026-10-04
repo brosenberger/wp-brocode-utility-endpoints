@@ -50,6 +50,23 @@ if (!defined('ABSPATH')) {
 
 const SYNC_MEDIA_BLOCKS = ['core/image', 'core/cover', 'core/video', 'core/audio', 'core/file', 'core/media-text', 'core/gallery'];
 
+/** Statuses a synced post can have; media files ("attachment") only exist as "inherit". */
+function syncStatuses(string $type): array
+{
+    return $type === 'attachment' ? ['inherit'] : ['publish', 'draft', 'pending', 'private', 'future'];
+}
+
+/** Alt text is the one core image field kept in meta; register it so it travels with the file. */
+function registerSyncAttachmentMeta(): void
+{
+    register_post_meta('attachment', '_wp_attachment_image_alt', [
+        'type'          => 'string',
+        'single'        => true,
+        'show_in_rest'  => true,
+        'auth_callback' => static fn(bool $allowed, string $key, int $postId): bool => current_user_can('edit_post', $postId),
+    ]);
+}
+
 function registerContentSyncRoutes(): void
 {
     register_rest_route('brocode/v1', '/content-export', [
@@ -85,7 +102,7 @@ function contentExport(WP_REST_Request $request): WP_REST_Response|\WP_Error
     }
     $query = [
         'post_type'        => $type,
-        'post_status'      => ['publish', 'draft', 'pending', 'private', 'future'],
+        'post_status'      => syncStatuses($type),
         'numberposts'      => -1,
         'orderby'          => 'ID',
         'order'            => 'ASC',
@@ -138,12 +155,17 @@ function syncExportPost(WP_Post $post): array
     if ($thumb > 0) {
         $ids[] = $thumb;
     }
+    $isMedia = $post->post_type === 'attachment';
+    if ($isMedia) {
+        $ids[] = $post->ID; // a media file carries its own path: identity across sites, upload on push
+    }
 
     return syncSummary($post) + [
         'type'       => $post->post_type,
         'title'      => $post->post_title,
         'date'       => $post->post_date,
-        'parent'     => $post->post_parent > 0 ? get_page_uri($post->post_parent) : '',
+        // A media file's parent is the post it was uploaded to: environment noise, not content.
+        'parent'     => !$isMedia && $post->post_parent > 0 ? get_page_uri($post->post_parent) : '',
         'menu_order' => (int) $post->menu_order,
         'template'   => (string) get_page_template_slug($post),
         'excerpt'    => $post->post_excerpt,
