@@ -189,11 +189,26 @@ function syncExportMeta(WP_Post $post): array
             $ref   = $value ? get_post((int) $value) : null;
             $value = $ref instanceof WP_Post ? $ref->post_name : '';
         }
-        $meta[$key] = $value;
+        // Meta can hold full site URLs too (e.g. Page Links To's _links_to).
+        $meta[$key] = syncMapStrings($value, __NAMESPACE__ . '\\syncNeutralUrls');
     }
     ksort($meta);
 
     return $meta;
+}
+
+/**
+ * Applies $map to every string in a meta value (scalars and arrays of them).
+ *
+ * @param callable(string): string $map
+ */
+function syncMapStrings(mixed $value, callable $map): mixed
+{
+    if (is_string($value)) {
+        return $map($value);
+    }
+
+    return is_array($value) ? array_map(static fn($v) => syncMapStrings($v, $map), $value) : $value;
 }
 
 /**

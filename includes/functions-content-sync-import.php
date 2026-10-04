@@ -191,6 +191,7 @@ function syncWriteMeta(int $postId, string $type, array $meta): void
             $ref   = $value !== '' ? get_page_by_path((string) $value, OBJECT, $refs[$key]) : null;
             $value = $ref instanceof WP_Post ? $ref->ID : 0;
         }
+        $value = syncMapStrings($value, __NAMESPACE__ . '\\syncLocalUrls');
         if (!empty($registered[$key]['single'])) {
             update_post_meta($postId, $key, wp_slash($value));
             continue;
