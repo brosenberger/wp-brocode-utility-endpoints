@@ -151,6 +151,8 @@ function registerRestRoutes(): void
                         'title-ptarchive-post',
                         'metadesc-author-wpseo',
                         'title-author-wpseo',
+                        // Page meta-description template; Yoast's AIOSEO import sets %%post_content%%.
+                        'metadesc-page',
                     ],
                     'sanitize_callback' => 'sanitize_key',
                 ],
