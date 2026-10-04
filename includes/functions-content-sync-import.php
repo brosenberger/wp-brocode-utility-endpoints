@@ -166,8 +166,13 @@ function syncWritePost(?WP_Post $existing, string $type, string $slug, array $it
         'post_content' => $content,
         'post_parent'  => $parent instanceof WP_Post ? $parent->ID : 0,
         'menu_order'   => (int) ($item['menu_order'] ?? 0),
-        'page_template' => (string) ($item['template'] ?? ''),
     ];
+    // A template the active theme lacks (e.g. a classic theme's page-templates/… file under a
+    // block theme) makes wp_insert_post fail AFTER saving the post. Keep the stored one instead.
+    $template = (string) ($item['template'] ?? '');
+    if ($template === '' || isset(wp_get_theme()->get_page_templates(null, $type)[$template])) {
+        $postarr['page_template'] = $template;
+    }
     if ((string) ($item['date'] ?? '') !== '') {
         $postarr['post_date'] = (string) $item['date'];
     }
