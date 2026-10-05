@@ -77,6 +77,13 @@ function contentImport(WP_REST_Request $request): WP_REST_Response|\WP_Error
     syncWriteFeatured($postId, (string) ($item['featured'] ?? ''));
 
     clean_post_cache($postId);
+    // Yoast caches each post's SEO data in its indexable table and rebuilds it on
+    // wp_insert_post — which fired inside syncWritePost, BEFORE the meta above was written,
+    // so the page would keep the old title/description. Fire it again now that all is saved.
+    $post = get_post($postId);
+    if ($post instanceof WP_Post) {
+        do_action('wp_insert_post', $postId, $post, true);
+    }
 
     return new WP_REST_Response(syncExportPost(get_post($postId)), $existing ? 200 : 201);
 }
