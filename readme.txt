@@ -4,7 +4,7 @@ Tags: rest-api, utilities, cache, rewrite, wp-cli
 Requires at least: 6.5
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
@@ -68,6 +68,10 @@ Yes. All five endpoints are registered as WP Abilities on the `wp_abilities_api_
 == Screenshots ==
 
 == Changelog ==
+
+= 1.3.1 =
+* Abilities now actually register on WP 6.9+: they belong to a `brocode` category, use `execute_callback`, and default to empty input. Before, core rejected all five with a "must contain a `category`" notice.
+* Every ability declares `readonly` / `destructive` / `idempotent` annotations and is listed on `wp-abilities/v1` (`show_in_rest`); permission checks are unchanged.
 
 = 1.3.0 =
 * Added content sync endpoints for a two-way git ↔ WordPress workflow: `GET content-export` (posts in an environment-neutral form — `{{home}}` URLs, attachment IDs with a path map, post references as slugs), `POST content-import` (one post by type + slug; translates media IDs to the target site, refuses with 409 when the post changed since the last sync), `POST media-ensure` (registers or uploads media at its original uploads path).

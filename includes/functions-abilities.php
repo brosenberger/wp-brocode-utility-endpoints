@@ -37,9 +37,11 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Compatibility shim — no-op on WP < 6.9 where wp_register_ability() does not exist.
- * Guarded by function_exists() so each brocode plugin can include its own copy without
- * causing a fatal error; the first definition loaded wins (all copies are identical).
+ * Compatibility shims — no-op on WP < 6.9 where the Abilities API does not exist.
+ * Each brocode plugin declares its own copy inside its own namespace (all copies are
+ * identical). Core rejects an ability whose category is not registered, so every brocode
+ * plugin hooks its brocode_register_ability_category on wp_abilities_api_categories_init;
+ * the has-check stops the second plugin from registering `brocode` twice.
  */
 if (!function_exists('brocode_register_ability')) {
     function brocode_register_ability(string $name, array $args): void
@@ -50,36 +52,55 @@ if (!function_exists('brocode_register_ability')) {
     }
 }
 
+function brocode_register_ability_category(): void
+{
+    if (function_exists('wp_register_ability_category') && !wp_has_ability_category('brocode')) {
+        wp_register_ability_category('brocode', [
+            'label'       => 'BroCode',
+            'description' => 'Site maintenance utilities from the brocode-* plugins.',
+        ]);
+    }
+}
+
 function registerAbilities(): void
 {
     brocode_register_ability('brocode/flush-rewrites', [
         'label'               => 'Flush rewrite rules',
         'description'         => 'Regenerates the WordPress permalink structure (flush_rewrite_rules). Run after registering new CPTs or changing permalink settings.',
-        'type'                => 'action',
+        'category'            => 'brocode',
         'permission_callback' => static fn() => current_user_can('manage_options'),
-        'callback'            => static fn(array $params): array => doFlushRewrites(),
-        'input_schema'        => ['type' => 'object', 'properties' => []],
+        'execute_callback'    => static fn(array $params): array => doFlushRewrites(),
+        'input_schema'        => ['type' => 'object', 'properties' => [], 'default' => []],
+        'meta'                => [
+            'show_in_rest' => true,
+            'annotations'  => ['readonly' => false, 'destructive' => false, 'idempotent' => true],
+        ],
     ]);
 
     brocode_register_ability('brocode/clear-cache', [
         'label'               => 'Clear page cache',
         'description'         => 'Clears the active page cache (Cache Enabler, W3 Total Cache, or WP Super Cache). Returns which cache layers were cleared.',
-        'type'                => 'action',
+        'category'            => 'brocode',
         'permission_callback' => static fn() => current_user_can('manage_options'),
-        'callback'            => static fn(array $params): array => doClearCache(),
-        'input_schema'        => ['type' => 'object', 'properties' => []],
+        'execute_callback'    => static fn(array $params): array => doClearCache(),
+        'input_schema'        => ['type' => 'object', 'properties' => [], 'default' => []],
+        'meta'                => [
+            'show_in_rest' => true,
+            'annotations'  => ['readonly' => false, 'destructive' => false, 'idempotent' => true],
+        ],
     ]);
 
     brocode_register_ability('brocode/scan-links', [
         'label'               => 'Scan internal links',
         'description'         => 'Find all published posts and pages whose content contains a given URL pattern. Useful for detecting leftover localhost or staging URLs.',
-        'type'                => 'action',
+        'category'            => 'brocode',
         'permission_callback' => static fn() => current_user_can('manage_options'),
-        'callback'            => static function (array $params): array {
+        'execute_callback'    => static function (array $params): array {
             return doScanLinks($params['pattern'] ?? 'ddev.site');
         },
         'input_schema'        => [
             'type'       => 'object',
+            'default'    => [],
             'properties' => [
                 'pattern' => [
                     'type'        => 'string',
@@ -88,14 +109,18 @@ function registerAbilities(): void
                 ],
             ],
         ],
+        'meta'                => [
+            'show_in_rest' => true,
+            'annotations'  => ['readonly' => true, 'destructive' => false, 'idempotent' => true],
+        ],
     ]);
 
     brocode_register_ability('brocode/manage-plugin', [
         'label'               => 'Manage plugin',
         'description'         => 'Activate, deactivate, or delete a WordPress plugin by slug or basename. Delete also requires delete_plugins capability.',
-        'type'                => 'action',
+        'category'            => 'brocode',
         'permission_callback' => static fn() => current_user_can('activate_plugins'),
-        'callback'            => static function (array $params): array {
+        'execute_callback'    => static function (array $params): array {
             $request = new WP_REST_Request('POST');
             $request->set_param('plugin', $params['plugin'] ?? '');
             $request->set_param('action', $params['action'] ?? '');
@@ -107,20 +132,25 @@ function registerAbilities(): void
         },
         'input_schema'        => [
             'type'       => 'object',
+            'default'    => [],
             'properties' => [
                 'plugin' => ['type' => 'string', 'description' => 'Plugin slug ("akismet") or basename ("akismet/akismet.php").'],
                 'action' => ['type' => 'string', 'enum' => ['activate', 'deactivate', 'delete']],
             ],
             'required'   => ['plugin', 'action'],
         ],
+        'meta'                => [
+            'show_in_rest' => true,
+            'annotations'  => ['readonly' => false, 'destructive' => true, 'idempotent' => false],
+        ],
     ]);
 
     brocode_register_ability('brocode/set-seo-meta', [
         'label'               => 'Set Yoast SEO meta',
         'description'         => 'Write Yoast SEO focus keyword, title, and meta description for a post. Requires Yoast SEO to be active and edit_post permission on the target.',
-        'type'                => 'action',
+        'category'            => 'brocode',
         'permission_callback' => static fn() => current_user_can('edit_posts'),
-        'callback'            => static function (array $params): array {
+        'execute_callback'    => static function (array $params): array {
             $postId = (int) ($params['post_id'] ?? 0);
             $request = new WP_REST_Request('POST');
             $request->set_url_params(['id' => (string) $postId]);
@@ -137,6 +167,7 @@ function registerAbilities(): void
         },
         'input_schema'        => [
             'type'       => 'object',
+            'default'    => [],
             'properties' => [
                 'post_id'  => ['type' => 'integer', 'description' => 'ID of the post or page to update.'],
                 'focuskw'  => ['type' => 'string', 'description' => 'Yoast focus keyword (max 191 chars).'],
@@ -144,6 +175,10 @@ function registerAbilities(): void
                 'metadesc' => ['type' => 'string', 'description' => 'Yoast meta description (max 156 chars).'],
             ],
             'required'   => ['post_id'],
+        ],
+        'meta'                => [
+            'show_in_rest' => true,
+            'annotations'  => ['readonly' => false, 'destructive' => true, 'idempotent' => true],
         ],
     ]);
 }
